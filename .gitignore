@@ -1,0 +1,3 @@
+# No subir archivos de variables de entorno
+.env
+*.env

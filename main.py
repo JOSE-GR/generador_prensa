@@ -17,11 +17,11 @@ def extract_text_from_pdf(pdf_path):
 
 
 # Cargar y extraer texto del PDF
-pdf_path = "nov3.pdf"  # Cambia esto por el nombre de tu archivo PDF
+pdf_path = "nov4.pdf"  # Cambia esto por el nombre de tu archivo PDF
 texto = extract_text_from_pdf(pdf_path)
 print(texto)  # Aquí ves el texto extraído
 
-pdf_path = "nov3.pdf"  # Cambia esto si tu archivo se llama diferente
+pdf_path = "nov4.pdf"  # Cambia esto si tu archivo se llama diferente
 
 texto = extract_text_from_pdf(pdf_path)  # Usamos la función que definiste en Celda 21,10
 
@@ -32,7 +32,7 @@ print(texto[:1000])  # Mostramos los primeros 1000 caracteres del texto
 
 
 
-pdf_path = "nov3.pdf"
+pdf_path = "nov4.pdf"
 doc = fitz.open(pdf_path)
 
 page = doc.load_page(2)  # página 3
@@ -56,45 +56,96 @@ for block in blocks:
 
 
 def detectar_titulos(pdf_path):
+    import fitz
+
     doc = fitz.open(pdf_path)
     titulos = []
-    textos_excluidos = {"Uso General", "Información"}  # Agrega más si aparecen
+    textos_excluidos = {"Uso General", "Información"}
 
-    for page_num in range(2, doc.page_count):  # desde página 3
+    # Empieza en la página 2 (índice 1) porque la 1 es la portada
+    for page_num in range(1, doc.page_count):
         page = doc.load_page(page_num)
         texto_dict = page.get_text("dict")
         blocks = texto_dict["blocks"]
 
+        titulo_encontrado = False
+
         for block in blocks:
-            if block['type'] != 0:
+            if block["type"] != 0:  # solo texto
                 continue
 
-            lines = block["lines"]
-            for line in lines:
-                spans = line["spans"]
-                for span in spans:
-                    texto = span['text'].strip()
-                    font = span['font']
-                    size = span['size']
-                    es_negrita = "bold" in font.lower()
+            buffer_lineas = []
+            estilo_actual = None  # (font_name, size_redondeado)
 
-                    if (
-                        texto
-                        and es_negrita
-                        and size >= 13
-                        and len(texto) >= 40
-                        and texto not in textos_excluidos
-                    ):
-                        titulos.append((texto, page_num + 1))
-                        break
-                else:
+            for line in block["lines"]:
+                spans = line.get("spans", [])
+                if not spans:
                     continue
-                break
-            else:
-                continue
-            break
+
+                # Texto completo de la línea (todos los spans)
+                line_text = "".join(span["text"] for span in spans).strip()
+                if not line_text:
+                    continue
+
+                span0 = spans[0]
+                font = span0["font"]
+                size = span0["size"]
+                es_negrita = "bold" in font.lower()
+
+                # ¿Esta línea forma parte del título?
+                if es_negrita and size >= 12:
+                    estilo_linea = (font, int(round(size)))
+
+                    if estilo_actual is None:
+                        # Empezamos a acumular un posible título
+                        estilo_actual = estilo_linea
+                        buffer_lineas.append(line_text)
+                    elif estilo_linea == estilo_actual:
+                        # Misma fuente/tamaño → sigue siendo el mismo título
+                        buffer_lineas.append(line_text)
+                    else:
+                        # Cambió de estilo → cerrar título si ya había algo
+                        if buffer_lineas:
+                            titulo = " ".join(buffer_lineas).strip()
+                            if (
+                                len(titulo) >= 25
+                                and titulo not in textos_excluidos
+                            ):
+                                titulos.append((titulo, page_num + 1))
+                                titulo_encontrado = True
+                                break
+                        # Reiniciar acumulador con esta nueva línea
+                        estilo_actual = estilo_linea
+                        buffer_lineas = [line_text]
+                else:
+                    # Línea que ya no es del título → cerrar, si había uno
+                    if buffer_lineas:
+                        titulo = " ".join(buffer_lineas).strip()
+                        if (
+                            len(titulo) >= 25
+                            and titulo not in textos_excluidos
+                        ):
+                            titulos.append((titulo, page_num + 1))
+                            titulo_encontrado = True
+                            break
+                        buffer_lineas = []
+                        estilo_actual = None
+
+            # Por si el título llega hasta la última línea del bloque
+            if not titulo_encontrado and buffer_lineas:
+                titulo = " ".join(buffer_lineas).strip()
+                if (
+                    len(titulo) >= 25
+                    and titulo not in textos_excluidos
+                ):
+                    titulos.append((titulo, page_num + 1))
+                    titulo_encontrado = True
+
+            if titulo_encontrado:
+                break  # ya tenemos el título de esta página
 
     return titulos
+
 
 titulos_detectados = detectar_titulos(pdf_path)
 
