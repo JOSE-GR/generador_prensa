@@ -8,6 +8,8 @@ from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
+from docx.enum.text import WD_LINE_SPACING
+
 
 from summary_claude import resumir_con_claude
 
@@ -98,8 +100,10 @@ MEDIOS_CONOCIDOS = {
     "Financial Times",
     "Fox Business",
     "The Guardian",
-    "PR Newswire",
-}
+    "The New York Times",
+    "El País",
+    "EL PAÍS",
+    "El Economista",}
 
 
 def separar_titulo_y_medio(titulo_completo: str):
@@ -276,12 +280,21 @@ def formatear_fecha_larga():
     año = hoy.year
     return f"{dia} de {mes_es} de {año}"
 
-
 def generar_nombre_archivo():
     hoy = datetime.now()
-    dia = hoy.strftime("%d")
-    mes = hoy.strftime("%B").lower().replace(" ", "")
-    return f"reporte de prensa {dia}{mes}.docx"
+    dia = hoy.strftime("%d")              # 06
+    mes_en = hoy.strftime("%B").lower()   # january
+
+    meses = {
+        "january": "enero", "february": "febrero", "march": "marzo",
+        "april": "abril", "may": "mayo", "june": "junio",
+        "july": "julio", "august": "agosto", "september": "septiembre",
+        "october": "octubre", "november": "noviembre", "december": "diciembre"
+    }
+    mes_es = meses.get(mes_en, mes_en)
+
+    return f"reporte de prensa {dia} de {mes_es}.docx"
+
 
 
 def generar_reporte_word_en_memoria(resumenes, ruta_logo: str | None = None, pdf_url: str | None = None):
@@ -291,6 +304,8 @@ def generar_reporte_word_en_memoria(resumenes, ruta_logo: str | None = None, pdf
     for section in doc.sections:
         section.left_margin = Inches(1)   # ~2.54 cm -> puedes bajar a 0.9 si quieres aún más ancho
         section.right_margin = Inches(1)
+        section.top_margin = Inches(0.5)      # prueba 0.6 / 0.5 / 0.4
+        section.bottom_margin = Inches(1)     # opcional
 
     # Estilo por defecto del documento: Times New Roman 11
     normal_style = doc.styles["Normal"]
@@ -339,6 +354,7 @@ def generar_reporte_word_en_memoria(resumenes, ruta_logo: str | None = None, pdf
 
     # Línea divisoria
     p_linea = doc.add_paragraph()
+    p_linea.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_linea.paragraph_format.space_before = Pt(5)
     run_linea = p_linea.add_run(
         "_____________________________________________________________"
@@ -398,6 +414,9 @@ def generar_reporte_word_en_memoria(resumenes, ruta_logo: str | None = None, pdf
         p_r = doc.add_paragraph(resumen)
         p_r.paragraph_format.space_before = Pt(0)
         p_r.paragraph_format.space_after = Pt(6)
+        # Interlineado 1.0 (single)
+        p_r.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        p_r.paragraph_format.line_spacing = 1.0
         p_r.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         for run in p_r.runs:
             run.font.name = "Times New Roman"
