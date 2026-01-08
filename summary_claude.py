@@ -115,13 +115,13 @@ def _generar_prompt(texto: str, idioma_forzado: str | None = None) -> str:
     return prompt
 
 
-def resumir_con_claude(texto: str) -> str:
+def resumir_con_claude(texto: str, titulo: str = "") -> str:
     """
     1) Detecta idioma probable del texto (es/en).
     2) Pide resumen en el mismo idioma (sin sesgo fuerte).
     3) Si el resultado sale en idioma distinto, reintenta 1 vez forzando el idioma correcto.
     """
-    idioma_texto = detectar_idioma(texto)
+    idioma = detectar_idioma((titulo or "") + "\n" + (texto or ""))
 
     # 1er intento (no forzado, solo "mismo idioma")
     prompt = _generar_prompt(texto, idioma_forzado=None)
@@ -141,9 +141,9 @@ def resumir_con_claude(texto: str) -> str:
 
         # Validación: ¿salió en el idioma correcto?
         idioma_resumen = detectar_idioma(resumen)
-        if idioma_resumen != idioma_texto:
+        if idioma_resumen != idioma:
             # Reintento forzando el idioma del texto
-            prompt2 = _generar_prompt(texto, idioma_forzado=idioma_texto)
+            prompt2 = _generar_prompt(texto, idioma_forzado=idioma)
             body["messages"] = [{"role": "user", "content": prompt2}]
             resp2 = httpx.post(API_URL, headers=HEADERS, json=body, timeout=60)
 
