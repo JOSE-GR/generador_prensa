@@ -543,8 +543,8 @@ if "titulos" in st.session_state:
                 titulo_completo = noticia["titulo"]
                 titulo_nota, medio = separar_titulo_y_medio(titulo_completo)
 
-                st.write(f"Resumiendo noticia {i}: {titulo_nota}")
-                resumen = resumir_con_claude(noticia["texto"])
+                st.write(f"Resumiendo noticia {i}: {titulo_nota}")                
+                resumen = resumir_con_claude(noticia["texto"], titulo=noticia.get("titulo", ""))
                 st.markdown(f"**Resumen {i}:**")
                 st.write(resumen)
 

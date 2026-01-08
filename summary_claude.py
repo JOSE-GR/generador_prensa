@@ -31,15 +31,26 @@ HEADERS = {
     "anthropic-version": "2023-06-01",
     "content-type": "application/json",
 }
-
 def detectar_idioma(texto: str) -> str:
     """
     Heurística simple ES vs EN (sin librerías extra).
+    IMPORTANTE: evaluar solo una muestra corta para evitar "contaminación" del PDF.
     """
-    t = (texto or "").lower()
+    t = (texto or "").strip().lower()
+    muestra = (" " + t[:600] + " ")  # usar solo los primeros ~600 chars
+
     marcadores_es = [" el ", " la ", " de ", " que ", " y ", " en ", " los ", " las ", " por ", " para ", " del ", " al "]
-    score_es = sum(t.count(m) for m in marcadores_es) + sum(1 for ch in t if ch in "áéíóúñ¿¡")
-    return "es" if score_es >= 8 else "en"
+    marcadores_en = [" the ", " and ", " of ", " to ", " in ", " for ", " with ", " on ", " from ", " by "]
+
+    score_es = sum(muestra.count(m) for m in marcadores_es) + sum(1 for ch in muestra if ch in "áéíóúñ¿¡")
+    score_en = sum(muestra.count(m) for m in marcadores_en)
+
+    # Si hay señales fuertes de inglés, forzar EN
+    if score_en > score_es:
+        return "en"
+    # Caso contrario, ES por defecto
+    return "es"
+
 
 def limpiar_prefacio(resumen: str) -> str:
     """
@@ -59,20 +70,28 @@ def limpiar_prefacio(resumen: str) -> str:
 
     return r
 
-def resumir_con_claude(texto: str) -> str:
-    idioma = detectar_idioma(texto)
+
+def resumir_con_claude(texto: str, titulo: str = "") -> str:
+    """
+    Resume manteniendo el idioma original (sin traducir).
+    Regla práctica:
+    - Detectamos idioma con el título (si existe), si no, con el inicio del texto.
+    """
+    base_idioma = (titulo or texto or "")
+    idioma = detectar_idioma(base_idioma)
 
     prompt = (
         "Eres un asistente que redacta resúmenes para un reporte interno de prensa.\n\n"
         "Reglas obligatorias:\n"
-        "1) Escribe el resumen en el MISMO idioma del texto de entrada. No traduzcas.\n"
+        "1) Escribe el resumen en el MISMO idioma del artículo. No traduzcas.\n"
         "2) Devuelve SOLO un párrafo (sin título, sin viñetas, sin encabezados).\n"
         "3) No incluyas prefacios ni frases meta como: \"Here's a summary\", \"Here is\", \"Resumen:\", "
         "\"A continuación\", \"In conclusion\", etc.\n"
         "4) Extensión objetivo: 110–120 palabras.\n"
         "5) Enfócate en hechos: qué pasó, quién, dónde, cuándo, cifras clave y contexto mínimo.\n\n"
-        f"Idioma esperado: {'Español' if idioma=='es' else 'Inglés'}.\n\n"
-        "TEXTO:\n"
+        f"Idioma a usar: {'Español' if idioma=='es' else 'Inglés'}.\n"
+        f"TÍTULO: {titulo}\n"
+        "ARTÍCULO:\n"
         f"{texto}"
     )
 
