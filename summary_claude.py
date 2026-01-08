@@ -31,25 +31,41 @@ HEADERS = {
     "anthropic-version": "2023-06-01",
     "content-type": "application/json",
 }
+
+# -----------------------------
+# Detección de idioma (ES vs EN)
+# -----------------------------
 def detectar_idioma(texto: str) -> str:
     """
-    Heurística simple ES vs EN (sin librerías extra).
-    IMPORTANTE: evaluar solo una muestra corta para evitar "contaminación" del PDF.
+    Heurística simple pero más robusta: compara señales ES vs EN.
+    Devuelve: 'es' o 'en'
     """
-    t = (texto or "").strip().lower()
-    muestra = (" " + t[:600] + " ")  # usar solo los primeros ~600 chars
+    t = (texto or "").lower()
 
-    marcadores_es = [" el ", " la ", " de ", " que ", " y ", " en ", " los ", " las ", " por ", " para ", " del ", " al "]
-    marcadores_en = [" the ", " and ", " of ", " to ", " in ", " for ", " with ", " on ", " from ", " by "]
+    # Señales ES
+    marcadores_es = [
+        " el ", " la ", " de ", " que ", " y ", " en ", " los ", " las ",
+        " por ", " para ", " del ", " al ", " una ", " un ", " se ", " con ",
+        " como ", " más ", " menos ", " también "
+    ]
+    score_es = sum(t.count(m) for m in marcadores_es) + sum(1 for ch in t if ch in "áéíóúñ¿¡")
 
-    score_es = sum(muestra.count(m) for m in marcadores_es) + sum(1 for ch in muestra if ch in "áéíóúñ¿¡")
-    score_en = sum(muestra.count(m) for m in marcadores_en)
+    # Señales EN
+    marcadores_en = [
+        " the ", " and ", " of ", " to ", " in ", " for ", " on ", " with ",
+        " as ", " by ", " from ", " that ", " this ", " it ", " at ", " were ",
+        " has ", " have ", " said ", " will ", " would "
+    ]
+    score_en = sum(t.count(m) for m in marcadores_en)
 
-    # Si hay señales fuertes de inglés, forzar EN
-    if score_en > score_es:
+    # Decisión por diferencia (evita falsos positivos por ruido)
+    if score_en >= score_es + 3:
         return "en"
-    # Caso contrario, ES por defecto
-    return "es"
+    if score_es >= score_en + 3:
+        return "es"
+
+    # Empate: fallback por caracteres (acentos suelen decidir)
+    return "es" if any(ch in t for ch in "áéíóúñ¿¡") else "en"
 
 
 def limpiar_prefacio(resumen: str) -> str:
@@ -65,35 +81,50 @@ def limpiar_prefacio(resumen: str) -> str:
     # Prefacios comunes ES
     r = re.sub(r"^(resumen|aquí (?:va|tienes) un resumen|a continuación)\b.*?:\s*", "", r, flags=re.IGNORECASE)
 
-    # Si el modelo devolvió más de un párrafo, nos quedamos con el primero
+    # Quedarnos con el primer párrafo
     r = r.split("\n\n")[0].strip()
-
     return r
 
 
-def resumir_con_claude(texto: str, titulo: str = "") -> str:
+def _generar_prompt(texto: str, idioma_forzado: str | None = None) -> str:
     """
-    Resume manteniendo el idioma original (sin traducir).
-    Regla práctica:
-    - Detectamos idioma con el título (si existe), si no, con el inicio del texto.
+    Prompt neutro (ES/EN) para minimizar sesgo de idioma.
+    Si idioma_forzado se pasa, obliga explícitamente 'es' o 'en'.
     """
-    base_idioma = (titulo or texto or "")
-    idioma = detectar_idioma(base_idioma)
+    if idioma_forzado == "en":
+        lang_line = "Write the summary in English. Do NOT translate into Spanish."
+    elif idioma_forzado == "es":
+        lang_line = "Escribe el resumen en Español. No traduzcas al inglés."
+    else:
+        lang_line = "Write the summary in the SAME language as the input text. Do NOT translate."
 
     prompt = (
+        "You are an assistant that writes summaries for an internal press report.\n"
         "Eres un asistente que redacta resúmenes para un reporte interno de prensa.\n\n"
-        "Reglas obligatorias:\n"
-        "1) Escribe el resumen en el MISMO idioma del artículo. No traduzcas.\n"
-        "2) Devuelve SOLO un párrafo (sin título, sin viñetas, sin encabezados).\n"
-        "3) No incluyas prefacios ni frases meta como: \"Here's a summary\", \"Here is\", \"Resumen:\", "
+        "Mandatory rules / Reglas obligatorias:\n"
+        f"1) {lang_line}\n"
+        "2) Return ONLY one paragraph (no title, no bullets, no headings).\n"
+        "   Devuelve SOLO un párrafo (sin título, sin viñetas, sin encabezados).\n"
+        "3) Do NOT include meta phrases like: \"Here's a summary\", \"Here is\", \"Resumen:\", "
         "\"A continuación\", \"In conclusion\", etc.\n"
-        "4) Extensión objetivo: 110–120 palabras.\n"
-        "5) Enfócate en hechos: qué pasó, quién, dónde, cuándo, cifras clave y contexto mínimo.\n\n"
-        f"Idioma a usar: {'Español' if idioma=='es' else 'Inglés'}.\n"
-        f"TÍTULO: {titulo}\n"
-        "ARTÍCULO:\n"
+        "4) Target length: 110–120 words.\n"
+        "5) Focus on facts: what happened, who, where, when, key figures, minimal context.\n\n"
+        "TEXT / TEXTO:\n"
         f"{texto}"
     )
+    return prompt
+
+
+def resumir_con_claude(texto: str) -> str:
+    """
+    1) Detecta idioma probable del texto (es/en).
+    2) Pide resumen en el mismo idioma (sin sesgo fuerte).
+    3) Si el resultado sale en idioma distinto, reintenta 1 vez forzando el idioma correcto.
+    """
+    idioma_texto = detectar_idioma(texto)
+
+    # 1er intento (no forzado, solo "mismo idioma")
+    prompt = _generar_prompt(texto, idioma_forzado=None)
 
     body = {
         "model": MODEL,
@@ -106,8 +137,22 @@ def resumir_con_claude(texto: str, titulo: str = "") -> str:
 
     if resp.status_code == 200:
         data = resp.json()
-        resumen = data["content"][0]["text"].strip()
-        return limpiar_prefacio(resumen)
+        resumen = limpiar_prefacio(data["content"][0]["text"].strip())
+
+        # Validación: ¿salió en el idioma correcto?
+        idioma_resumen = detectar_idioma(resumen)
+        if idioma_resumen != idioma_texto:
+            # Reintento forzando el idioma del texto
+            prompt2 = _generar_prompt(texto, idioma_forzado=idioma_texto)
+            body["messages"] = [{"role": "user", "content": prompt2}]
+            resp2 = httpx.post(API_URL, headers=HEADERS, json=body, timeout=60)
+
+            if resp2.status_code == 200:
+                data2 = resp2.json()
+                resumen2 = limpiar_prefacio(data2["content"][0]["text"].strip())
+                return resumen2
+
+        return resumen
 
     if resp.status_code == 401:
         raise Exception("401 autenticación: la x-api-key es inválida o no se envió (revisa Secrets/.env).")
