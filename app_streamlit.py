@@ -12,6 +12,34 @@ from docx.enum.text import WD_LINE_SPACING
 
 
 from summary_claude import resumir_con_claude
+import hmac
+
+def check_password():
+    """
+    Bloquea el acceso a toda la app usando Streamlit Secrets.
+    """
+    if st.session_state.get("authenticated", False):
+        return True
+
+    try:
+        correct_password = st.secrets["PRESS_PASS"]
+    except Exception:
+        st.error("La contraseña no está configurada en Streamlit Secrets.")
+        st.stop()
+
+    st.title("Acceso restringido")
+    password = st.text_input("Contraseña", type="password")
+
+    if st.button("Entrar"):
+        if hmac.compare_digest(password, correct_password):
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Contraseña incorrecta.")
+
+    return False
+if not check_password():
+    st.stop()
 
 
 def cargar_imagen_base64(ruta: str) -> str:
