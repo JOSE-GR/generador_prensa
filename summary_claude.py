@@ -24,7 +24,7 @@ if not API_KEY:
 API_URL = "https://api.anthropic.com/v1/messages"
 
 # Permite sobreescribir por variable de entorno; usa Haiku por defecto (Opus suele requerir acceso especial)
-MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-20241022")
+MODEL = os.getenv("ANTHROPIC_MODEL")
 
 HEADERS = {
     "x-api-key": API_KEY,
