@@ -85,7 +85,7 @@ Aplica el formato del reporte: encabezado con logo y fecha, nombre de la gerenci
 
 ---
 
-La aplicación está desplegada en Streamlit Cloud y el acceso está restringido mediante contraseña. 
+La aplicación está desplegada en Streamlit Cloud y el acceso está restringido mediante contraseña
 ---
 
 ## Autor 👾
